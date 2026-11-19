@@ -1,0 +1,4 @@
+node_modules/
+*.tgz
+.verify/
+.DS_Store

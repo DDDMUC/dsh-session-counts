@@ -1,0 +1,55 @@
+{
+  "name": "dsh-session-counts",
+  "version": "0.1.0",
+  "description": "DSH Web 侧边栏会话计数：每个工作区（文件夹）行尾显示会话数，表头显示总数，口径跟随已归档筛选。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "sidebar",
+    "session-count"
+  ],
+  "license": "MIT",
+  "author": "DDDMUC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DDDMUC/dsh-session-counts.git"
+  },
+  "homepage": "https://github.com/DDDMUC/dsh-session-counts#readme",
+  "bugs": {
+    "url": "https://github.com/DDDMUC/dsh-session-counts/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: session-counts
+      name: 'dsh-session-counts'

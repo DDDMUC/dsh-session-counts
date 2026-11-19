@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session Counts",
+    "description": "Shows a session count on every workspace folder row and the total beside the Workspaces label, following the archived filter."
+  }
+}
