@@ -15,7 +15,7 @@
  * re-renders of the shipped row never remove an extra child node.
  */
 window.__ModuleLoader__.load({
-  id: '@local/dsh-session-counts',
+  id: 'dsh-session-counts',
   factory(require) {
     const React = require('react');
 

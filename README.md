@@ -40,11 +40,21 @@
 
 ## 安装
 
+从 npm：
+
 ```bash
-dsh plugin install https://github.com/DDDMUC/dsh-session-counts
+dsh plugin --profile <name> add dsh-session-counts
 ```
 
-或在 DSH 的插件管理里选择从本地目录安装，指向本仓库根目录。
+从 GitHub 源码安装：
+
+```bash
+dsh plugin --profile <name> add https://github.com/DDDMUC/dsh-session-counts
+```
+
+或在 DSH 的插件管理界面里选择从本地目录安装，指向本仓库根目录。
+
+安装后刷新页面即可看到计数。
 
 ## 许可
 

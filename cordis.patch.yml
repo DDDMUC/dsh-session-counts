@@ -1,3 +1,3 @@
 - insert:
     - id: session-counts
-      name: '@local/dsh-session-counts'
+      name: 'dsh-session-counts'
