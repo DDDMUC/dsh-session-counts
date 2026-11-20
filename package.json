@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-counts",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "DSH Web 侧边栏会话计数：每个工作区（文件夹）行尾显示会话数，表头显示总数，口径跟随已归档筛选。",
   "type": "module",
   "main": "index.js",

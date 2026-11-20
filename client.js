@@ -2,14 +2,16 @@
  * Sidebar session counts.
  *
  * Draws two decorations the shipped UI does not allocate a seat for:
- *   - one count per Workspace (folder) row, right after its title;
+ *   - one badge per Workspace (folder) row, right after its title;
  *   - one total next to the "Workspaces" section label.
  *
- * Counts follow the archived filter the shipped browser persists under
- * `dsh.workspace.view.v5` (`default` | `show` | `only`). Each badge reads
- * `shown/total`: `shown` is what the current filter lets the user see, `total`
- * is every conversation the Workspace holds, archived included. Blank rows and
- * subagent children are not conversations and count for neither.
+ * The badge format is a plugin setting on the bundle's own row page
+ * (`plugins.row.config`):
+ *   - `ratio` (default): `shown/total`, where `shown` follows the archived
+ *     filter persisted under `dsh.workspace.view.v5` and `total` includes
+ *     archived sessions;
+ *   - `visible`: the pre-0.0.2 behaviour, `shown` alone.
+ * Blank rows and subagent children are not conversations and count for neither.
  *
  * Rows carry their business key in `data-row-key="workspace:<id>"`; the badge
  * rides on a `data-dsh-count` attribute rendered by CSS `::after`, so React
@@ -26,10 +28,43 @@ window.__ModuleLoader__.load({
     const LABEL_SELECTOR = '[class*="_sectionLabel"]';
     const TOTAL_CLASS = 'dshc-total';
 
+    /** Locale namespace and the row id this bundle's patch declares. */
+    const NS = 'dsh-session-counts';
+    const ROW_ID = 'session-counts';
+    const MODE_KEY = 'dsh-session-counts:mode';
+
     /** Latest store inputs, refreshed on every render. */
     const inputs = { items: [], archivedIds: [], list: null };
     let frame = 0;
     let lastFilter = '';
+
+    function readMode() {
+      try {
+        return window.localStorage.getItem(MODE_KEY) === 'visible' ? 'visible' : 'ratio';
+      } catch {
+        return 'ratio';
+      }
+    }
+
+    let mode = readMode();
+    const modeListeners = new Set();
+
+    function setMode(next) {
+      mode = next === 'visible' ? 'visible' : 'ratio';
+      try {
+        window.localStorage.setItem(MODE_KEY, mode);
+      } catch {
+        /* storage unavailable: the session keeps the in-memory choice */
+      }
+      for (const listener of modeListeners) {
+        try {
+          listener();
+        } catch {
+          /* one listener must not break the others */
+        }
+      }
+      schedule();
+    }
 
     function findFilter(value, depth) {
       if (value === null || typeof value !== 'object' || depth > 4) return undefined;
@@ -120,9 +155,15 @@ window.__ModuleLoader__.load({
       return { filter, counts, shownTotal, grandTotal };
     }
 
-    /** `shown/total`; the two are equal whenever nothing is filtered out. */
+    /** `shown/total` in ratio mode, `shown` alone in visible mode. */
     function label(part) {
+      if (mode === 'visible') return String(part.shown);
       return String(part.shown) + '/' + String(part.total);
+    }
+
+    function headerLabel(shownTotal, grandTotal) {
+      if (mode === 'visible') return String(shownTotal);
+      return String(shownTotal) + '/' + String(grandTotal);
     }
 
     function paint() {
@@ -140,10 +181,12 @@ window.__ModuleLoader__.load({
       /* Older generations appended a span here; drop any sibling left behind. */
       for (const stale of document.querySelectorAll('.' + TOTAL_CLASS)) stale.remove();
       const header = document.querySelector(HEADER_SELECTOR);
-      const headerLabel = header === null ? null : header.querySelector(LABEL_SELECTOR);
-      if (headerLabel === null) return;
-      const text = String(shownTotal) + '/' + String(grandTotal);
-      if (headerLabel.getAttribute('data-dsh-total') !== text) headerLabel.setAttribute('data-dsh-total', text);
+      const headerLabelNode = header === null ? null : header.querySelector(LABEL_SELECTOR);
+      if (headerLabelNode === null) return;
+      const text = headerLabel(shownTotal, grandTotal);
+      if (headerLabelNode.getAttribute('data-dsh-total') !== text) {
+        headerLabelNode.setAttribute('data-dsh-total', text);
+      }
     }
 
     function schedule() {
@@ -213,26 +256,139 @@ window.__ModuleLoader__.load({
       return null;
     }
 
+    /** One radio row: label plus the line that explains what it shows. */
+    function ModeOption(props) {
+      const t = props.t;
+      const value = props.value;
+      const checked = props.checked;
+      return React.createElement('label', {
+        key: value,
+        className: 'dshc-option' + (checked ? ' dshc-optionOn' : ''),
+        'data-dsh-session-counts-option': value,
+      }, [
+        React.createElement('input', {
+          key: 'input',
+          type: 'radio',
+          name: 'dsh-session-counts-mode',
+          value,
+          checked,
+          onChange: () => setMode(value),
+          className: 'dshc-radio',
+        }),
+        React.createElement('span', { key: 'body', className: 'dshc-optionBody' }, [
+          React.createElement('span', { key: 'title', className: 'dshc-optionTitle' },
+            t(value === 'visible' ? 'mode.visible' : 'mode.ratio')),
+          React.createElement('span', { key: 'hint', className: 'dshc-optionHint' },
+            t(value === 'visible' ? 'mode.visibleHint' : 'mode.ratioHint')),
+        ]),
+      ]);
+    }
+
+    /**
+     * The bundle's own row page. `view` is `summary` for the one-liner the rows
+     * list shows, `page` for the page the configure control opens.
+     */
+    function CountsModeCard(props) {
+      const t = props.t === undefined ? (key) => key : props.t;
+      const [current, setCurrent] = React.useState(mode);
+      React.useEffect(() => {
+        const listener = () => setCurrent(readMode());
+        modeListeners.add(listener);
+        return () => {
+          modeListeners.delete(listener);
+        };
+      }, []);
+      if (props.view === 'summary') {
+        return React.createElement('span', null,
+          t(current === 'visible' ? 'summary.visible' : 'summary.ratio'));
+      }
+      return React.createElement('div', { className: 'dshc-card' }, [
+        React.createElement('div', { key: 'title', className: 'dshc-cardTitle' }, t('title')),
+        React.createElement('div', { key: 'desc', className: 'dshc-cardDesc' }, t('desc')),
+        React.createElement('div', { key: 'options', className: 'dshc-options' }, [
+          React.createElement(ModeOption, { key: 'ratio', value: 'ratio', checked: current === 'ratio', t }),
+          React.createElement(ModeOption, { key: 'visible', value: 'visible', checked: current === 'visible', t }),
+        ]),
+        React.createElement('div', { key: 'note', className: 'dshc-note' }, t('note')),
+      ]);
+    }
+
     const STYLE = [
       '[data-dsh-count]::after{content:attr(data-dsh-count);order:2;margin-inline-start:6px;flex:none;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);pointer-events:none}',
       '[data-dsh-count]>span[class*="_rowActions"]{order:3}',
       '[class*="_sectionLabel"][data-dsh-total]::after{content:attr(data-dsh-total);margin-inline-start:6px;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);pointer-events:none}',
       '[class*="_sectionLabelHidden"][data-dsh-total]::after{display:none}',
+      '.dshc-card{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:12px;background:var(--dsw-alias-bg-secondary);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}',
+      '.dshc-cardTitle{font-size:14px;font-weight:600;line-height:22px}',
+      '.dshc-cardDesc{color:var(--dsw-alias-label-secondary)}',
+      '.dshc-options{display:flex;flex-direction:column;gap:8px;margin-top:2px}',
+      '.dshc-option{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--dsw-alias-border-secondary);border-radius:10px;cursor:pointer}',
+      '.dshc-optionOn{border-color:var(--dsw-alias-state-business-primary)}',
+      '.dshc-radio{margin:3px 0 0;accent-color:var(--dsw-alias-state-business-primary)}',
+      '.dshc-optionBody{display:flex;flex-direction:column;gap:2px}',
+      '.dshc-optionTitle{font-weight:500}',
+      '.dshc-optionHint{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
+      '.dshc-note{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}',
     ].join('\n');
 
+    const ZH = {
+      title: '计数显示方式',
+      desc: '选择侧边栏徽章显示哪些数字。更改后立即生效。',
+      'mode.ratio': '显示可见数/总数',
+      'mode.ratioHint': '左边是当前可见的会话数；右边是含已归档的总数，不受筛选影响。',
+      'mode.visible': '仅显示可见数',
+      'mode.visibleHint': '跟随「筛选会话」，只显示当前能看到的会话数。',
+      'summary.ratio': '显示可见数/总数',
+      'summary.visible': '仅显示可见数',
+      note: '空会话与子代理会话不计入；折叠的工作区照常统计。',
+    };
+
+    const EN = {
+      title: 'Badge numbers',
+      desc: 'Choose which numbers the sidebar badges show. The change applies immediately.',
+      'mode.ratio': 'Visible / total',
+      'mode.ratioHint': 'Left is the visible count; right includes archived sessions and ignores the filter.',
+      'mode.visible': 'Visible count only',
+      'mode.visibleHint': 'Follows the archived filter and shows only the sessions you can see.',
+      'summary.ratio': 'Visible / total',
+      'summary.visible': 'Visible count only',
+      note: 'Blank and subagent sessions are not counted; collapsed Workspaces still count.',
+    };
+
     return {
-      inject: ['slots'],
+      inject: ['slots', 'locale'],
       apply(ctx) {
         const style = document.createElement('style');
         style.setAttribute('data-dsh-session-counts', '');
         style.textContent = STYLE;
         document.head.appendChild(style);
         ctx.effect(() => () => style.remove());
+
+        ctx.effect(() => {
+          const offZh = ctx.locale.register(NS, 'zh', ZH);
+          const offEn = ctx.locale.register(NS, 'en', EN);
+          return () => {
+            offEn();
+            offZh();
+          };
+        }, 'session-counts: dictionaries');
+
         ctx.slots.inject('shell.overlay', () => ctx.slots.register({
           name: 'shell.overlay',
           id: 'session-counts',
           order: 50,
         }, SessionCounts));
+
+        /* The manager addresses a row page by `<package name>#<row id>`; the
+           package is installed under both its published and its local alias,
+           so both keys point at the same card. */
+        for (const bundle of ['dsh-session-counts', '@local/dsh-session-counts']) {
+          ctx.slots.inject('plugins.row.config', () => ctx.slots.register({
+            name: 'plugins.row.config',
+            key: bundle + '#' + ROW_ID,
+            locale: NS,
+          }, CountsModeCard));
+        }
       },
     };
   },

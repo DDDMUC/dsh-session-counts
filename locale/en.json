@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Session Counts",
-    "description": "Shows a session count on every workspace folder row and the total beside the Workspaces label, following the archived filter."
+    "description": "Shows a session badge on every workspace folder row and a total beside the Workspaces label. The plugin settings let you switch between \"visible / total\" and \"visible only\"."
   }
 }
