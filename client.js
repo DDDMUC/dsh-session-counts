@@ -6,11 +6,12 @@
  *   - one total next to the "Workspaces" section label.
  *
  * Counts follow the archived filter the shipped browser persists under
- * `dsh.workspace.view.v5` (`default` | `show` | `only`) and skip blank and
- * subagent sessions, so a folder shows exactly the conversations the current
- * filter lets the user see.
+ * `dsh.workspace.view.v5` (`default` | `show` | `only`). Each badge reads
+ * `shown/total`: `shown` is what the current filter lets the user see, `total`
+ * is every conversation the Workspace holds, archived included. Blank rows and
+ * subagent children are not conversations and count for neither.
  *
- * Rows carry their business key in `data-row-key="workspace:<id>"`; the count
+ * Rows carry their business key in `data-row-key="workspace:<id>"`; the badge
  * rides on a `data-dsh-count` attribute rendered by CSS `::after`, so React
  * re-renders of the shipped row never remove an extra child node.
  */
@@ -66,14 +67,17 @@ window.__ModuleLoader__.load({
       return '';
     }
 
-    /** One Session counts unless blank, a subagent child, or hidden by the filter. */
-    function visible(session, sessionId, archived, filter) {
-      if (session === undefined || session.blank === true) return false;
-      if (session.origin === 'subagent') return false;
+    /**
+     * One member's contribution to a folder: `total` when it is a real Session,
+     * `shown` as well when the archived filter lets it through. Blank rows and
+     * subagent children are not conversations and count for neither.
+     */
+    function weigh(session, sessionId, archived, filter) {
+      if (session === undefined || session.blank === true) return null;
+      if (session.origin === 'subagent') return null;
       const isArchived = archived.has(sessionId);
-      if (filter === 'only') return isArchived;
-      if (filter === 'show') return true;
-      return !isArchived;
+      const shown = filter === 'only' ? isArchived : filter === 'show' ? true : !isArchived;
+      return { total: 1, shown: shown ? 1 : 0 };
     }
 
     function compute() {
@@ -82,48 +86,64 @@ window.__ModuleLoader__.load({
       const byId = (inputs.list && inputs.list.byId) || {};
       const ids = (inputs.list && inputs.list.ids) || [];
       const counts = new Map();
-      let total = 0;
+      let shownTotal = 0;
+      let grandTotal = 0;
       const accounted = new Set();
+      const tally = (sessionId) => weigh(byId[sessionId], sessionId, archived, filter);
       for (const workspace of inputs.items || []) {
-        let count = 0;
+        let shown = 0;
+        let total = 0;
         for (const sessionId of workspace.sessionIds || []) {
           accounted.add(sessionId);
-          if (!visible(byId[sessionId], sessionId, archived, filter)) continue;
-          count += 1;
+          const part = tally(sessionId);
+          if (part === null) continue;
+          shown += part.shown;
+          total += part.total;
         }
-        counts.set(workspace.workspaceId, count);
-        total += count;
+        counts.set(workspace.workspaceId, { shown, total });
+        shownTotal += shown;
+        grandTotal += total;
       }
       /* The trailing Ungrouped bucket is rendered as `data-row-key="workspace:"`. */
-      let stray = 0;
+      let strayShown = 0;
+      let strayTotal = 0;
       for (const sessionId of ids) {
         if (accounted.has(sessionId)) continue;
-        if (!visible(byId[sessionId], sessionId, archived, filter)) continue;
-        stray += 1;
+        const part = tally(sessionId);
+        if (part === null) continue;
+        strayShown += part.shown;
+        strayTotal += part.total;
       }
-      counts.set('', stray);
-      total += stray;
-      return { filter, counts, total };
+      counts.set('', { shown: strayShown, total: strayTotal });
+      shownTotal += strayShown;
+      grandTotal += strayTotal;
+      return { filter, counts, shownTotal, grandTotal };
+    }
+
+    /** `shown/total`; the two are equal whenever nothing is filtered out. */
+    function label(part) {
+      return String(part.shown) + '/' + String(part.total);
     }
 
     function paint() {
-      const { filter, counts, total } = compute();
+      const { filter, counts, shownTotal, grandTotal } = compute();
       lastFilter = filter;
       for (const row of document.querySelectorAll(ROW_SELECTOR)) {
         const key = (row.getAttribute('data-row-key') || '').slice('workspace:'.length);
-        const count = counts.get(key);
-        if (count === undefined) row.removeAttribute('data-dsh-count');
-        else if (row.getAttribute('data-dsh-count') !== String(count)) {
-          row.setAttribute('data-dsh-count', String(count));
+        const part = counts.get(key);
+        if (part === undefined) row.removeAttribute('data-dsh-count');
+        else {
+          const text = label(part);
+          if (row.getAttribute('data-dsh-count') !== text) row.setAttribute('data-dsh-count', text);
         }
       }
       /* Older generations appended a span here; drop any sibling left behind. */
       for (const stale of document.querySelectorAll('.' + TOTAL_CLASS)) stale.remove();
       const header = document.querySelector(HEADER_SELECTOR);
-      const label = header === null ? null : header.querySelector(LABEL_SELECTOR);
-      if (label === null) return;
-      const text = String(total);
-      if (label.getAttribute('data-dsh-total') !== text) label.setAttribute('data-dsh-total', text);
+      const headerLabel = header === null ? null : header.querySelector(LABEL_SELECTOR);
+      if (headerLabel === null) return;
+      const text = String(shownTotal) + '/' + String(grandTotal);
+      if (headerLabel.getAttribute('data-dsh-total') !== text) headerLabel.setAttribute('data-dsh-total', text);
     }
 
     function schedule() {
